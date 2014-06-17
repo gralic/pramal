@@ -1,0 +1,130 @@
+# Practical Machine Learning course project
+========================================================
+**The goal of the project is to predict the manner in which 6 persons performed a physical exercise,
+namely barbell lifts. In the training set, this is the "classe" variable. On one hand, there are 159
+other variables, but on the other hand, many of them are always 'NA'. So first of all we discard
+the variables that won't help achieve the project goal simply because they are all 'NA' in the test set:**
+```{r}
+pmlt = read.csv("pml_training.csv")
+pmle = read.csv("pml_testing.csv")
+print(c(dim(pmlt), dim(pmle)))
+for (i in dim(pmle)[2] : 1) {
+  if (sum(is.na(pmle[,i])) == dim(pmle)[1]) {
+    pmle[,i]<-NULL; pmlt[,i]<-NULL;
+  }
+}
+print(c(dim(pmlt), dim(pmle)))
+```
+**After looking at names of the remaining 60 variables, and first few values,
+we can see that 5 out of the first 6 variables are not likely to help predict correctly.
+The first of them is simply the test case number, three of them are timestamp parts,
+and also a yes/no flag 'new_window'. So those 5 variables were deleted manually:**
+```{r}
+print(names(pmlt))
+pmlt[,6] = pmle[,6] = NULL
+pmlt[,5] = pmle[,5] = NULL
+pmlt[,4] = pmle[,4] = NULL
+pmlt[,3] = pmle[,3] = NULL
+pmlt[,1] = pmle[,1] = NULL
+# Thus, we have 54 predictor variables, and one outcome:
+print(c(dim(pmlt), dim(pmle)))
+```
+**Now we set the random seed and define the main function that will take a method name and
+a data set on input, split the latter into a training set and a cross validation (CV) set,
+80% and 20% accordingly, then build a model on the training set, make predictions for data
+records in the CV set, report accuracy on the CV set, and return the model.**
+```{r}
+set.seed(13234)
+run1set = function(mthd, trainSet) {
+  inTrain = createDataPartition(y=trainSet$classe, p=0.8, list=FALSE)
+  training = trainSet[inTrain,]
+  crossval = trainSet[-inTrain,]
+  print(date())
+  modFit = train(classe~., data=training, method=mthd, verbose=FALSE)
+  pred <- predict(modFit, crossval)
+  print(table(pred, crossval$classe))
+  print(paste('Accuracy =', 100 * sum(pred == crossval$classe) / length(pred), '%'))
+  modFit
+}
+options(warn=-1)
+library(plyr)
+library(caret)
+library(gbm)
+library(randomForest)
+```
+**Now if we split the training set into 6 subsets, each corresponding to one person,
+making use of the 'user_name' varibale and the fact that the same 6 persons are in
+the** goal of the project **testing set,**
+```{r}
+pmlt1 = pmlt[pmlt$user_name=="pedro",]
+pmlt2 = pmlt[pmlt$user_name=="eurico",]
+pmlt3 = pmlt[pmlt$user_name=="jeremy",]
+pmlt4 = pmlt[pmlt$user_name=="adelmo",]
+pmlt5 = pmlt[pmlt$user_name=="charles",]
+pmlt6 = pmlt[pmlt$user_name=="carlitos",]
+```
+**then our main function is not too slow at training-predicting-reporting on each of
+the 6 subsets, in case the method is** 'gbm'**, that is,** Boosting With Trees:
+```{r cache=TRUE}
+modFit1 = run1set("gbm", pmlt1)
+modFit2 = run1set("gbm", pmlt2)
+modFit3 = run1set("gbm", pmlt3)
+modFit4 = run1set("gbm", pmlt4)
+modFit5 = run1set("gbm", pmlt5)
+modFit6 = run1set("gbm", pmlt6)
+print(date())
+```
+**We can see from the six tables above that there are just two incorrect predictions,
+out of almost 4000 (19622*0.2), so the average accuracy is very high.**  
+
+**It takes a bit longer if the method is** 'rf', **that is,** Random Forests:
+```{r cache=TRUE}
+modFit1F = run1set("rf", pmlt1)
+modFit2F = run1set("rf", pmlt2)
+modFit3F = run1set("rf", pmlt3)
+modFit4F = run1set("rf", pmlt4)
+modFit5F = run1set("rf", pmlt5)
+modFit6F = run1set("rf", pmlt6)
+print(date())
+```
+**The same number of incorrect predictions as when Boosting With Trees,
+two are incorrect, but the good news is that if we make the twenty**
+goal of the project **predictions, we observe that** Random Forests
+**agree with** Boosting With Trees **in all 20 cases:**
+```{r}
+answers = rep("A", 20)
+for (i in 1:20) {
+  if (pmle$user_name[i]=="pedro")    answers[i] = predict(modFit1, pmle[i,])
+  if (pmle$user_name[i]=="eurico")   answers[i] = predict(modFit2, pmle[i,])
+  if (pmle$user_name[i]=="jeremy")   answers[i] = predict(modFit3, pmle[i,])
+  if (pmle$user_name[i]=="adelmo")   answers[i] = predict(modFit4, pmle[i,])
+  if (pmle$user_name[i]=="charles")  answers[i] = predict(modFit5, pmle[i,])
+  if (pmle$user_name[i]=="carlitos") answers[i] = predict(modFit6, pmle[i,])
+}
+print(answers)
+
+answersF = rep("A", 20)
+for (i in 1:20) {
+  if (pmle$user_name[i]=="pedro")    answersF[i] = predict(modFit1F, pmle[i,])
+  if (pmle$user_name[i]=="eurico")   answersF[i] = predict(modFit2F, pmle[i,])
+  if (pmle$user_name[i]=="jeremy")   answersF[i] = predict(modFit3F, pmle[i,])
+  if (pmle$user_name[i]=="adelmo")   answersF[i] = predict(modFit4F, pmle[i,])
+  if (pmle$user_name[i]=="charles")  answersF[i] = predict(modFit5F, pmle[i,])
+  if (pmle$user_name[i]=="carlitos") answersF[i] = predict(modFit6F, pmle[i,])
+}
+print(c(sum(answers==answersF), length(answersF)))
+```
+**However, to better estimate the expected out of sample error, we should not
+split the original training set into 6 subsets.  
+In this case our main function runs for almost an hour,
+but as you might expect the accuracy is significantly lower:**
+```{r cache=TRUE}
+modFit = run1set("gbm", pmlt)
+print(date())
+```
+**Here are the 20** goal of the project **predictions:**
+```{r}
+print(predict(modFit, pmle))
+```
+**They are equal to predictions from individual personal models (variables** answers
+**and** answersF**, see above), A=1, B=2, ..., E=5.**
